@@ -1,68 +1,85 @@
-"""
-case_study.py — Q16: Integrated Case Study
-
-Workload: linked-list traversal.
-
-A singly linked list with 16 nodes, each 32 bytes, allocated non-contiguously
-across the heap. Traversing the list touches each node in order of the next
-pointer — which means consecutive accesses land in unrelated blocks.
-
-Because the addresses are scattered and each node is visited once, the workload
-has no locality.
-"""
+# q16_mapping.py
+# Q16: Mapping Functions Case Study
+# Compare Direct, Set-Associative, and Fully Associative mapping
+# across the three workload types
 
 from main import run_simulation
-from functions import calculate_rates
+from functions import calculate_rates, get_num_of_set
 
-BLOCK_SIZE = 32   # one node per block
+BLOCK_SIZE = 16
+CACHE_SIZE = 64          # 64 bytes / 16 = 4 slots
+POLICY = "LRU"
 
-# 16 node addresses, Each address is the start of a distinct 32-byte block.
-SINGLE_PASS = [0, 512, 256, 768, 384, 128, 640, 896,
-               64, 576, 320, 832, 192, 704, 448, 960]
+# Workloads (same strings as Q14)
+SEQUENTIAL = [0, 16, 32, 48, 64, 80, 96, 112,
+              128, 144, 160, 176, 192, 208, 224, 240]
 
-# Two traversals of the same list — the second pass gives the cache a chance
-# to reuse blocks loaded during the first pass.
-DOUBLE_PASS = SINGLE_PASS + SINGLE_PASS
+LOCALITY = [0, 16, 0, 16, 0, 16, 32, 32, 0, 16, 0, 16, 0, 16]
 
-# Experiment 1: single traversal 
+CONFLICT = [0, 64, 128, 192, 0, 64, 128, 192, 0, 64, 128, 192]
 
-def run_baseline():
-    hits, misses = run_simulation(
-        cache_size=4096,
-        block_size=BLOCK_SIZE,
-        associativity=1,
-        policy="LRU",
-        requests=SINGLE_PASS,
-        verbose=True,          # for the report
-    )
-    hit_rate, miss_rate = calculate_rates(hits, misses)
-    print(f"\nBaseline (4 KB, 1-way, LRU): "
-          f"{hits} hits, {misses} misses, hit rate {hit_rate}%")
+WORKLOADS = {
+    "sequential": SEQUENTIAL,
+    "locality":   LOCALITY,
+    "conflict":   CONFLICT,
+}
 
-# Experiment 2: single traversal, across cache size and associativity
+# Mapping functions expressed as associativity values
+# 1 = direct, 2 = 2-way set-assoc, 4 = fully associative (all 4 slots in 1 set)
+MAPPINGS = {
+    "Direct (1-way)":        1,
+    "Set-Assoc (2-way)":     2,
+    "Fully Assoc (4-way)":   4,
+}
 
-def run_sweep(requests, label):
-    """Vary cache size and associativity for a given reference string."""
-    print(f"\n=== Sweep: {label} ===")
-    header = f"{'Size':>6} {'Assoc':>6} {'Hits':>6} {'Miss':>6} {'Hit%':>8}"
+
+def run_q16():
+    results = []
+
+    for workload_name, addresses in WORKLOADS.items():
+        for mapping_name, assoc in MAPPINGS.items():
+            hits, misses = run_simulation(
+                CACHE_SIZE, BLOCK_SIZE, assoc, POLICY,
+                addresses, verbose=False
+            )
+            hit_rate, miss_rate = calculate_rates(hits, misses)
+            num_sets = get_num_of_set(CACHE_SIZE, BLOCK_SIZE, assoc)
+
+            results.append({
+                "workload": workload_name,
+                "mapping": mapping_name,
+                "assoc": assoc,
+                "sets": num_sets,
+                "references": len(addresses),
+                "hits": hits,
+                "misses": misses,
+                "hit_rate": hit_rate,
+                "miss_rate": miss_rate,
+            })
+
+    return results
+
+
+def print_q16_table(results):
+    header = (f"{'Workload':<12} {'Mapping':<22} {'Sets':>5} "
+              f"{'Refs':>5} {'Hits':>5} {'Miss':>5} {'Hit%':>8}")
     print(header)
     print("-" * len(header))
+    for r in results:
+        print(f"{r['workload']:<12} {r['mapping']:<22} {r['sets']:>5} "
+              f"{r['references']:>5} {r['hits']:>5} {r['misses']:>5} "
+              f"{r['hit_rate']:>8.2f}")
 
-    for cache_size in [1024, 4096, 16384]:
-        for associativity in [1, 2, 4]:
-            slots = cache_size // BLOCK_SIZE
-            if associativity > slots:
-                continue
-            hits, misses = run_simulation(
-                cache_size, BLOCK_SIZE, associativity,
-                "LRU", requests, verbose=False
-            )
-            hit_rate, _ = calculate_rates(hits, misses)
-            print(f"{cache_size:>6} {associativity:>6} "
-                  f"{hits:>6} {misses:>6} {hit_rate:>8.2f}")
 
-# Main
+def print_q16_tsv(results):
+    print("Workload\tMapping\tSets\tReferences\tHits\tMisses\tHit rate")
+    for r in results:
+        print(f"{r['workload']}\t{r['mapping']}\t{r['sets']}\t"
+              f"{r['references']}\t{r['hits']}\t{r['misses']}\t{r['hit_rate']}")
+
+
 if __name__ == "__main__":
-    run_baseline()
-    run_sweep(SINGLE_PASS, "single traversal")
-    run_sweep(DOUBLE_PASS, "double traversal")
+    results = run_q16()
+    print_q16_table(results)
+    print()
+    print_q16_tsv(results)
